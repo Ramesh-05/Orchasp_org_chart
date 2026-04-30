@@ -174,9 +174,64 @@ function EmployeeTree({
   const isCollapsed = collapsed.has(employee.id) && !hasFilter;
   const isHidden = hasFilter && !matchingIds.has(employee.id);
   const visibleChildren = employee.children.filter((child) => !hasFilter || matchingIds.has(child.id));
-  const isVertical = level >= 1;
 
-  if (isHidden) {
+  const horizontalDesignations = ["Department Head", "Development Lead", "QA Lead", "Network Lead", "Manager"];
+  const isVertical = level >= 1 && !horizontalDesignations.includes(employee.designation);
+  const childrenHorizontal = horizontalDesignations.includes(employee.designation) || level === 0;
+
+  const isTeamLead = employee.designation === "Team Lead";
+  const groupDefinitions = [
+    {
+      label: "Associate Software Engineer",
+      matcher: (designation: string) => designation === "Associate Software Engineer",
+    },
+    {
+      label: "Intern Trainees",
+      matcher: (designation: string) => designation.includes("Intern Trainees"),
+    },
+  ];
+
+  const groupedChildren = isTeamLead
+    ? groupDefinitions
+        .map((group) => {
+          const members = visibleChildren.filter((child) => group.matcher(child.designation));
+          if (members.length === 0) {
+            return null;
+          }
+
+          return {
+            id: `GROUP-${employee.id}-${group.label.replace(/\s+/g, "-")}`,
+            employeeId: "GROUP_ASE",
+            firstName: group.label,
+            lastName: "",
+            email: "",
+            phone: "",
+            department: employee.department,
+            designation: group.label,
+            employmentType: "Permanent",
+            joiningDate: employee.joiningDate,
+            status: "Active" as const,
+            manager: employee.id,
+            children: members,
+            isGroup: true,
+          } as EmployeeNode & { isGroup: true };
+        })
+        .filter(Boolean) as Array<EmployeeNode & { isGroup: true }>
+    : [];
+
+  const isGroup = (employee as EmployeeNode & { isGroup?: boolean }).isGroup;
+  const teamLeadChildren = isTeamLead
+    ? [
+        ...groupedChildren,
+        ...visibleChildren.filter(
+          (child) => !groupDefinitions.some((group) => group.matcher(child.designation)),
+        ),
+      ]
+    : visibleChildren;
+
+  const nodeIsHidden = hasFilter && !matchingIds.has(employee.id) && !(isGroup && employee.children.some((child) => matchingIds.has(child.id)));
+
+  if (nodeIsHidden) {
     return null;
   }
 
@@ -189,22 +244,26 @@ function EmployeeTree({
         collapsed={isCollapsed}
         compact={isVertical}
         onToggle={() => onToggle(employee.id)}
-        onSelect={() => onSelectEmployee(employee)}
+        onSelect={() => {
+          if (!isGroup) {
+            onSelectEmployee(employee);
+          }
+        }}
       />
 
-      {!isCollapsed && visibleChildren.length > 0 && (
-        <div className={`children ${isVertical ? "children-vertical" : "children-horizontal"}`}>
-          {!isVertical && <span className="drop-line" />}
-          {visibleChildren.map((child, index) => (
+      {!isCollapsed && teamLeadChildren.length > 0 && (
+        <div className={`children ${childrenHorizontal ? "children-horizontal" : "children-vertical"}`}>
+          {childrenHorizontal && <span className="drop-line" />}
+          {teamLeadChildren.map((child, index) => (
             <div className="child-wrap" key={child.id}>
-              {!isVertical && visibleChildren.length > 1 && (
+              {childrenHorizontal && teamLeadChildren.length > 1 && (
                 <span
                   className={`sibling-line ${
-                    index === 0 ? "sibling-line-first" : index === visibleChildren.length - 1 ? "sibling-line-last" : ""
+                    index === 0 ? "sibling-line-first" : index === teamLeadChildren.length - 1 ? "sibling-line-last" : ""
                   }`}
                 />
               )}
-              {!isVertical && <span className="child-line" />}
+              {childrenHorizontal && <span className="child-line" />}
               <EmployeeTree
                 employee={child}
                 selectedId={selectedId}
